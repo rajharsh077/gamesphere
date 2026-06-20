@@ -1,13 +1,18 @@
 import React from 'react';
-import { Search, Gamepad2, Star, Zap, Trophy } from 'lucide-react';
+import { Search, Gamepad2, Star, Zap, Trophy, Users, Clock, UserCheck } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 
-const LobbyFilters = ({ filters, setFilters, gameTypes, search, setSearch }) => {
+const LobbyFilters = ({ filters, setFilters, gameTypes, search, setSearch, sortBy, setSortBy }) => {
   const selectOptions = [
     { value: 'all', label: 'Game Type', icon: Gamepad2 },
     { value: 'tic-tac-toe', label: 'Tic Tac Toe', icon: Star },
     { value: 'connect4', label: 'Connect 4', icon: Zap },
     { value: 'chess', label: 'Chess', icon: Trophy }
+  ];
+
+  const sortOptions = [
+    { value: 'newest', label: 'Newest Lobbies', icon: Clock },
+    { value: 'friends-inside', label: 'Friends Inside', icon: UserCheck }
   ];
 
   return (
@@ -31,6 +36,17 @@ const LobbyFilters = ({ filters, setFilters, gameTypes, search, setSearch }) => 
           onChange={(val) => setFilters((f) => ({ ...f, gameType: val }))}
           options={selectOptions}
           icon={Gamepad2}
+          className="border-white/5 bg-slate-950/40 text-slate-400 hover:text-white"
+        />
+      </div>
+
+      {/* Sort Selector */}
+      <div className="w-full sm:w-44">
+        <CustomSelect
+          value={sortBy}
+          onChange={setSortBy}
+          options={sortOptions}
+          icon={Clock}
           className="border-white/5 bg-slate-950/40 text-slate-400 hover:text-white"
         />
       </div>
@@ -76,3 +92,4 @@ const LobbyFilters = ({ filters, setFilters, gameTypes, search, setSearch }) => 
 };
 
 export default LobbyFilters;
+

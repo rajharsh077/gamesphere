@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { getUserMatchHistory, updateUserProfile } from '../services/userService';
+import { fetchMe } from '../services/authService';
 import { setUser } from '../store/slices/authSlice';
 import { avatarOptions, getAvatarUrl } from '../utils/avatar';
 import {
@@ -34,6 +35,23 @@ const ProfilePage = () => {
     setEditBio(user?.bio || '');
     setEditTagline(user?.tagline || '');
   }, [user]);
+
+  // Fetch latest user profile data on mount
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      try {
+        const data = await fetchMe();
+        if (data && data.user) {
+          dispatch(setUser(data.user));
+        }
+      } catch (err) {
+        console.error('Failed to load fresh user profile:', err);
+      }
+    };
+    if (token) {
+      loadUserProfile();
+    }
+  }, [token, dispatch]);
 
   // Fetch match history
   useEffect(() => {

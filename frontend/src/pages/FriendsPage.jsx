@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFriends, searchUsers, sendFriendRequest, acceptFriendRequest, inviteFriendToLobby, removeFriend } from '../services/friendService';
 import { initSocket, onFriendPresence, offFriendPresence, emitSubscribeFriends } from '../services/socketService';
@@ -21,6 +21,7 @@ const FriendsPage = () => {
   const [friendMatches, setFriendMatches] = useState([]);
   const [friendGameElos, setFriendGameElos] = useState({ chess: 1200, connect4: 1200, ttt: 1200 });
   const [loadingMatches, setLoadingMatches] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
   
   const token = useSelector((state) => state.auth.token);
   const navigate = useNavigate();
@@ -99,6 +100,7 @@ const FriendsPage = () => {
   };
 
   const loadFriends = async () => {
+    setLoadingFriends(true);
     try {
       const data = await getFriends();
       setFriends((prevFriends) => {
@@ -119,6 +121,8 @@ const FriendsPage = () => {
       setIncomingRequests(data.pendingRequests.incoming || []);
     } catch (error) {
       setStatusMessage('Unable to load friends.');
+    } finally {
+      setLoadingFriends(false);
     }
   };
 
@@ -185,12 +189,17 @@ const FriendsPage = () => {
     };
   }, [token]);
 
+  const friendIdsKey = useMemo(
+    () => friends.map((f) => f._id || f.id).filter(Boolean).sort().join(','),
+    [friends.length]
+  );
+
   // Subscribe to friend presence updates
   useEffect(() => {
-    if (!token || friends.length === 0) return;
+    if (!token || !friendIdsKey) return;
     if (!initSocket(token)) return;
 
-    const friendIds = friends.map((f) => f._id || f.id).filter(Boolean);
+    const friendIds = friendIdsKey.split(',').filter(Boolean);
     emitSubscribeFriends({ friendIds });
 
     const handlePresence = ({ userId, online, currentLobbyId, lastActive }) => {
@@ -211,7 +220,7 @@ const FriendsPage = () => {
         offFriendPresence(handlePresence);
       }
     };
-  }, [token, friends]);
+  }, [token, friendIdsKey]);
 
   const handleSearch = async (event) => {
     event.preventDefault();
@@ -553,7 +562,37 @@ const FriendsPage = () => {
 
               {/* Friends list scroll area with custom vertical scroll bar */}
               <div className="mt-5 space-y-3 h-[360px] overflow-y-scroll pr-2 custom-scrollbar">
-                {filteredFriends.length === 0 ? (
+                {loadingFriends ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div 
+                        key={i} 
+                        className="flex items-center justify-between gap-3 rounded-[1.6rem] border border-white/5 bg-slate-950/45 px-4 py-3.5 shadow-sm animate-fade-in"
+                      >
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0 md:flex-initial md:w-5/12 text-left">
+                          <div className="h-9 w-9 rounded-full bg-slate-900 border border-slate-700/60 animate-pulse shrink-0" />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3.5 w-24 bg-slate-900 rounded animate-pulse" />
+                              <div className="h-3.5 w-16 bg-slate-900 rounded-full animate-pulse" />
+                            </div>
+                            <div className="flex gap-2">
+                              <div className="h-3.5 w-16 bg-slate-900 rounded animate-pulse" />
+                              <div className="h-3.5 w-16 bg-slate-900 rounded animate-pulse" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="hidden md:flex flex-1 justify-center px-4 min-w-0 md:w-3/12">
+                          <div className="h-3.5 w-32 bg-slate-900 rounded animate-pulse" />
+                        </div>
+                        <div className="flex items-center gap-3.5 shrink-0 md:w-4/12 justify-end">
+                          <div className="h-6.5 w-20 rounded-xl bg-slate-900 animate-pulse" />
+                          <div className="h-8.5 w-8.5 rounded-xl bg-slate-900 animate-pulse" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredFriends.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/45 p-12 text-center text-xs text-slate-500 font-semibold uppercase tracking-wider">
                     {friends.length === 0 
                       ? 'You have not added any friends yet. Use Discovery to connect!' 

@@ -537,6 +537,7 @@ const LobbyPage = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showOnlyMyLobbies, setShowOnlyMyLobbies] = useState(false);
   const [filters, setFilters] = useState({ gameType: 'all', privacy: 'all', minPlayers: 0 });
+  const [sortBy, setSortBy] = useState('newest');
   const gameTypes = Array.from(new Set(lobbies.map((l) => l.gameType))).filter(Boolean);
   const onlineFriends = friends.filter((friend) => friend.online).length;
   const sortedFriends = useMemo(() => {
@@ -585,8 +586,24 @@ const LobbyPage = () => {
   }, [filteredLobbies, user]);
 
   const lobbiesToRender = useMemo(() => {
-    return showOnlyMyLobbies ? myLobbies : filteredLobbies.filter((l) => l.status === 'waiting');
-  }, [showOnlyMyLobbies, myLobbies, filteredLobbies]);
+    let list = showOnlyMyLobbies ? myLobbies : filteredLobbies.filter((l) => l.status === 'waiting');
+    
+    if (sortBy === 'friends-inside') {
+      const friendIds = friends.map((f) => getUserIdString(f));
+      list = list.filter((l) => {
+        const hostId = getUserIdString(l.host);
+        const playersIds = l.players?.map((p) => getUserIdString(p)) || [];
+        const allIds = [hostId, ...playersIds].filter(Boolean);
+        return allIds.some((id) => friendIds.includes(id));
+      });
+    }
+
+    return [...list].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [showOnlyMyLobbies, myLobbies, filteredLobbies, sortBy, friends]);
 
   const renderLobbyCard = (lobby) => {
     const isChess = lobby.gameType === 'chess';
@@ -638,11 +655,45 @@ const LobbyPage = () => {
       }
     })();
 
-    const isWaiting = (lobby.players?.length || 0) < (lobby.maxPlayers || 2);
-    const statusText = isWaiting ? 'Waiting' : 'In Progress';
-    const statusBadgeClass = isWaiting 
-      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 animate-pulse-glow' 
-      : 'border-orange-500/30 bg-orange-500/10 text-orange-400';
+    const maxPlayers = lobby.maxPlayers || 2;
+    const currentPlayers = lobby.players?.length || 0;
+    const isWaiting = currentPlayers < maxPlayers;
+
+    let statusText = 'Open';
+    let statusBadgeClass = 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 animate-pulse-glow';
+
+    if (currentPlayers >= maxPlayers) {
+      statusText = 'Full';
+      statusBadgeClass = 'border-rose-500/30 bg-rose-500/10 text-rose-400';
+    } else if (currentPlayers === maxPlayers - 1) {
+      statusText = 'Almost Full';
+      statusBadgeClass = 'border-amber-500/30 bg-amber-500/10 text-amber-400 animate-pulse-glow';
+    }
+
+    const hostIdStr = getUserIdString(lobby.host);
+    const isHostOnline = (() => {
+      if (hostIdStr === getUserIdString(user)) return true;
+      const friend = friends.find((f) => getUserIdString(f) === hostIdStr);
+      if (friend) return friend.online;
+      return true; // Default to true since the lobby is active
+    })();
+
+    const allMembers = [];
+    if (lobby.host) {
+      allMembers.push(lobby.host);
+    }
+    if (lobby.players && Array.isArray(lobby.players)) {
+      lobby.players.forEach((p) => {
+        const pId = getUserIdString(p);
+        if (pId && pId !== hostIdStr) {
+          allMembers.push(p);
+        }
+      });
+    }
+
+    const maxVisibleAvatars = 3;
+    const visibleMembers = allMembers.slice(0, maxVisibleAvatars);
+    const extraCount = allMembers.length - maxVisibleAvatars;
 
     return (
       <div 
@@ -681,8 +732,11 @@ const LobbyPage = () => {
                   </span>
                 )}
               </div>
-              <div className="text-[11px] font-bold text-slate-400 leading-none">
-                Hosted by <span className="text-slate-200">{getPlayerDisplayName(lobby.host)}</span>
+              <div className="text-[11px] font-bold text-slate-400 leading-none flex items-center gap-1.5 mt-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${isHostOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse-glow' : 'bg-slate-500 animate-none'}`} />
+                <span>
+                  Hosted by <span className="text-slate-200">{getPlayerDisplayName(lobby.host)}</span>
+                </span>
               </div>
             </div>
           </div>
@@ -693,10 +747,39 @@ const LobbyPage = () => {
               {statusText}
             </span>
 
-            {/* Player Count */}
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <Users className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-bold">{lobby.players?.length ?? 0}/{lobby.maxPlayers || 2}</span>
+            {/* Player Count & Avatars */}
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-1.5 overflow-hidden">
+                {visibleMembers.map((member, idx) => {
+                  const nameStr = member.username || 'Player';
+                  const initials = nameStr.slice(0, 1).toUpperCase();
+                  return member.avatarUrl ? (
+                    <Avatar
+                      key={getUserIdString(member) || idx}
+                      src={member.avatarUrl}
+                      alt={nameStr}
+                      size="xs"
+                      className="ring-2 ring-slate-950 border border-slate-700/50 shrink-0"
+                    />
+                  ) : (
+                    <div
+                      key={getUserIdString(member) || idx}
+                      className="h-6 w-6 rounded-full ring-2 ring-slate-950 flex items-center justify-center bg-slate-900 border border-slate-700/50 text-[9px] font-black uppercase text-cyan-400 shrink-0"
+                    >
+                      {initials}
+                    </div>
+                  );
+                })}
+                {extraCount > 0 && (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 ring-2 ring-slate-950 text-[9px] font-black text-slate-350 border border-slate-700/50 shrink-0">
+                    +{extraCount}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1 bg-slate-900/60 border border-white/5 rounded-lg px-2 py-1 shrink-0 text-slate-400">
+                <Users className="h-3 w-3 shrink-0" />
+                <span className="text-[10px] font-bold">{currentPlayers}/{maxPlayers}</span>
+              </div>
             </div>
 
             {/* Button CTA */}
@@ -2441,28 +2524,45 @@ const LobbyPage = () => {
             </div>
 
             {/* Play vs AI Info Banner */}
-            <div className="w-full rounded-[1.5rem] border border-indigo-500/20 bg-indigo-500/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_20px_rgba(99,102,241,0.05)] backdrop-blur-sm relative overflow-hidden group">
+            <div className="w-full rounded-[2rem] border border-indigo-500/20 bg-indigo-500/5 p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-[0_0_20px_rgba(99,102,241,0.05)] backdrop-blur-sm relative overflow-hidden group">
               <div className="absolute -inset-y-12 -inset-x-12 bg-gradient-to-r from-transparent via-white/[0.01] to-transparent group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-                  <Bot className="h-5 w-5 animate-pulse" />
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.15)]">
+                  <Bot className="h-6 w-6 animate-pulse" />
                 </div>
-                <div className="text-left text-wrap max-w-full">
+                <div className="text-left flex-1 min-w-0">
                   <span className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-300">Instant AI Matches</span>
-                  <p className="mt-0.5 text-xs text-slate-400 font-medium leading-relaxed">
-                    No active players online? Click <strong className="text-indigo-300">Play vs AI</strong> in the header to instantly start a rated match against <strong>AlphaSphere AI</strong>. Matches grant rating shifts and XP rewards!
+                  <h3 className="text-base font-black text-white mt-0.5">Ready for a challenge?</h3>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed mt-1">
+                    Instantly start a rated match against <strong>AlphaSphere AI</strong>. Earn rank rating shifts and game XP rewards!
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={handleQuickMatch}
+                className="w-full md:w-auto shrink-0 rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:brightness-110 text-white font-black text-xs uppercase tracking-wider px-8 py-3.5 shadow-[0_4px_20px_rgba(99,102,241,0.25)] transition duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                <Bot className="h-4 w-4" />
+                <span>Quick Match vs AI</span>
+              </button>
             </div>
 
             {/* Two Columns Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
               
               {/* Left Column: Lobbies Marketplace List */}
               <div className={showCreateForm ? "lg:col-span-8 space-y-4 flex flex-col" : "lg:col-span-12 space-y-4 flex flex-col"}>
                 {/* Lobby Filters */}
-                <LobbyFilters filters={filters} setFilters={setFilters} gameTypes={gameTypes} search={search} setSearch={setSearch} />
+                 <LobbyFilters
+                   filters={filters}
+                   setFilters={setFilters}
+                   gameTypes={gameTypes}
+                   search={search}
+                   setSearch={setSearch}
+                   sortBy={sortBy}
+                   setSortBy={setSortBy}
+                 />
 
                 {/* Lobbies List */}
                 <div className="space-y-4 p-2">
@@ -2497,7 +2597,9 @@ const LobbyPage = () => {
                     <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/45 p-8 text-center text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       {showOnlyMyLobbies 
                         ? "No active rooms found in 'My Lobbies' matching filters."
-                        : "No active lobbies found. Create one to start!"}
+                        : sortBy === 'friends-inside'
+                        ? "No lobbies with friends inside found."
+                        : "No active lobbies found matching criteria."}
                     </div>
                   ) : (
                     <div className="space-y-3">
