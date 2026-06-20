@@ -15,21 +15,26 @@ const googleAuth = async (req, res, next) => {
     }
 
     let payload;
+    const isIdToken = token.startsWith('ey');
 
-    if (client) {
-      try {
-        const ticket = await client.verifyIdToken({
-          idToken: token,
-          audience: process.env.GOOGLE_CLIENT_ID
-        });
-        payload = ticket.getPayload();
-      } catch (err) {
-        console.error('google-auth-library verification failed, trying tokeninfo fallback:', err.message);
+    if (isIdToken) {
+      if (client) {
+        try {
+          const ticket = await client.verifyIdToken({
+            idToken: token,
+            audience: process.env.GOOGLE_CLIENT_ID
+          });
+          payload = ticket.getPayload();
+        } catch (err) {
+          console.error('google-auth-library verification failed, trying tokeninfo fallback:', err.message);
+          payload = await fetchTokenInfo(token);
+        }
+      } else {
+        console.warn('GOOGLE_CLIENT_ID not configured in backend .env. Using tokeninfo API fallback.');
         payload = await fetchTokenInfo(token);
       }
     } else {
-      console.warn('GOOGLE_CLIENT_ID not configured in backend .env. Using tokeninfo API fallback.');
-      payload = await fetchTokenInfo(token);
+      payload = await fetchUserInfoFromAccessToken(token);
     }
 
     const { sub: googleId, email, name, picture } = payload;
@@ -100,6 +105,32 @@ const fetchTokenInfo = (token) => {
           const parsed = JSON.parse(data);
           if (res.statusCode >= 400) {
             reject(new Error(parsed.error_description || 'Invalid token'));
+          } else {
+            resolve(parsed);
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+};
+
+// Helper utility to get userinfo with an access token from Google API
+const fetchUserInfoFromAccessToken = (accessToken) => {
+  return new Promise((resolve, reject) => {
+    https.get(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${accessToken}`, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            reject(new Error(parsed.error_description || 'Invalid access token'));
           } else {
             resolve(parsed);
           }
