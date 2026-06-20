@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { loginStart, loginSuccess, loginFailure } from '../store/slices/authSlice';
-import { register } from '../services/authService';
+import { register, googleLogin } from '../services/authService';
 import { setAuthToken } from '../services/api';
 import { avatarOptions, getAvatarUrl } from '../utils/avatar';
+import { GoogleLogin } from '@react-oauth/google';
 import { Mail, Lock, User, Gamepad2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 
 const RegisterPage = () => {
@@ -22,6 +23,20 @@ const RegisterPage = () => {
 }
 
   const avatarUrl = getAvatarUrl(selectedAvatarSeed);
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    dispatch(loginStart());
+    try {
+      const data = await googleLogin(credentialResponse.credential);
+      localStorage.setItem('token', data.accessToken);
+      setAuthToken(data.accessToken);
+      dispatch(loginSuccess({ user: data.user, token: data.accessToken }));
+      navigate('/lobby', { replace: true });
+    } catch (err) {
+      dispatch(loginFailure(err.message));
+      setError(err.response?.data?.message || 'Google authentication failed');
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -237,6 +252,37 @@ const RegisterPage = () => {
                 Initialize Profile
               </button>
             </form>
+
+            {/* Separator */}
+            <div className="my-6 flex items-center gap-4">
+              <div className="h-px flex-1 bg-white/5" />
+              <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-slate-500">or continue with</span>
+              <div className="h-px flex-1 bg-white/5" />
+            </div>
+
+            {/* Social Logins */}
+            <div className="grid grid-cols-2 gap-4 items-center">
+              <div className="h-11 overflow-hidden rounded-xl border border-white/5 flex items-center justify-center bg-[#13111e]/40 hover:bg-white/[0.02]">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => setError('Google sign-in failed')}
+                  theme="filled_black"
+                  shape="square"
+                  text="signup_with"
+                  size="large"
+                  width="180px"
+                />
+              </div>
+              <button
+                type="button"
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/5 bg-[#13111e]/40 px-5 text-xs font-bold text-slate-300 transition hover:bg-white/[0.02] hover:border-white/10"
+              >
+                <svg className="h-4 w-4 text-[#5865F2]" viewBox="0 0 127.14 96.36" fill="currentColor">
+                  <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,53.22,6.83,77.19,77.19,0,0,0,49.88,0,105.15,105.15,0,0,0,19.44,8.07C3.66,31.58-1.86,54.65,1,77.53A105.73,105.73,0,0,0,32,96.36a77.7,77.7,0,0,0,6.63-10.85,68.43,68.43,0,0,1-10.5-5c.89-.65,1.76-1.34,2.58-2.06a75.22,75.22,0,0,0,72.76,0c.82.72,1.69,1.41,2.58,2.06a68.43,68.43,0,0,1-10.5,5,77.7,77.7,0,0,0,6.63,10.85,105.73,105.73,0,0,0,31.06-18.83C129.87,48.24,124,25.43,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z" />
+                </svg>
+                Discord
+              </button>
+            </div>
 
             <div className="mt-6 text-center text-xs font-semibold text-slate-500 lg:hidden">
               Already have an account?{' '}
