@@ -473,6 +473,7 @@ const LobbyPage = () => {
   const token = useSelector((state) => state.auth.token);
   const user = useSelector((state) => state.auth.user);
   const [lobbies, setLobbies] = useState([]);
+  const [loadingLobbies, setLoadingLobbies] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const chatContainerRef = useRef(null);
@@ -736,6 +737,7 @@ const LobbyPage = () => {
 
   const loadLobbies = async () => {
     console.log('[LobbyPage] loadLobbies called');
+    setLoadingLobbies(true);
     try {
       const data = await getPublicLobbies();
       console.log('[LobbyPage] loadLobbies success:', data);
@@ -743,6 +745,8 @@ const LobbyPage = () => {
     } catch (error) {
       console.error('[LobbyPage] loadLobbies error:', error);
       setStatusMessage('Unable to load lobbies.');
+    } finally {
+      setLoadingLobbies(false);
     }
   };
 
@@ -2462,7 +2466,34 @@ const LobbyPage = () => {
 
                 {/* Lobbies List */}
                 <div className="space-y-4 p-2">
-                  {lobbiesToRender.length === 0 ? (
+                  {loadingLobbies ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div 
+                          key={i} 
+                          className="rounded-[1.8rem] border border-white/5 bg-slate-950/45 p-4 sm:p-5 transition-all duration-300 shadow-md animate-fade-in"
+                        >
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                              <div className="h-12 w-12 rounded-2xl bg-slate-900 border border-white/5 animate-pulse shrink-0" />
+                              <div className="space-y-2 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="h-4 w-32 bg-slate-900 rounded animate-pulse" />
+                                  <div className="h-4 w-16 bg-slate-900 rounded animate-pulse" />
+                                </div>
+                                <div className="h-3.5 w-24 bg-slate-900 rounded animate-pulse" />
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 flex-wrap sm:flex-nowrap shrink-0">
+                              <div className="h-5 w-16 rounded-full bg-slate-900 animate-pulse" />
+                              <div className="h-4 w-10 bg-slate-900 animate-pulse" />
+                              <div className="h-9 w-24 bg-slate-900 rounded-xl animate-pulse" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : lobbiesToRender.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/45 p-8 text-center text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       {showOnlyMyLobbies 
                         ? "No active rooms found in 'My Lobbies' matching filters."
