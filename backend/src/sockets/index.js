@@ -437,6 +437,108 @@ const initSockets = (server, app) => {
       }
     });
 
+    socket.on('game:rematch:request', async ({ gameId }, callback) => {
+      console.log('SOCKET: game:rematch:request received', { gameId, userId });
+      try {
+        if (!gameId) {
+          console.log('SOCKET: game:rematch:request validation failed: Game ID is required');
+          return callback({ status: 'error', message: 'Game ID is required' });
+        }
+
+        const match = await gamesService.getMatchById(gameId);
+        if (!match) {
+          console.log('SOCKET: game:rematch:request validation failed: Match not found');
+          return callback({ status: 'error', message: 'Game not found' });
+        }
+
+        if (match.status !== 'completed') {
+          console.log('SOCKET: game:rematch:request validation failed: Match is not completed');
+          return callback({ status: 'error', message: 'Match is not completed yet' });
+        }
+
+        if (!match.lobbyId) {
+          console.log('SOCKET: game:rematch:request validation failed: Lobby ID is missing');
+          return callback({ status: 'error', message: 'Match does not belong to a lobby' });
+        }
+
+        const lobby = await Lobby.findById(match.lobbyId);
+        if (!lobby) {
+          console.log('SOCKET: game:rematch:request validation failed: Lobby not found');
+          return callback({ status: 'error', message: 'Lobby not found' });
+        }
+
+        const hasAI = match.players.some(p => {
+          if (!p.userId) return false;
+          if (typeof p.userId === 'object') {
+            return p.userId.username === 'AlphaSphere AI';
+          }
+          return false;
+        });
+
+        if (lobby.durationType === 'one-time' && !hasAI) {
+          console.log('SOCKET: game:rematch:request validation failed: Cannot rematch in a one-time lobby');
+          return callback({ status: 'error', message: 'Cannot rematch in a one-time lobby' });
+        }
+
+        const playerEntry = match.players.find(p => {
+          const pId = p.userId && (p.userId._id || p.userId);
+          return pId && pId.toString() === userId.toString();
+        });
+        if (!playerEntry) {
+          console.log('SOCKET: game:rematch:request validation failed: User is not a participant');
+          return callback({ status: 'error', message: 'You are not a participant in this game' });
+        }
+
+        if (!match.rematchRequests) {
+          match.rematchRequests = [];
+        }
+        
+        const alreadyRequested = match.rematchRequests.some(id => id.toString() === userId.toString());
+        if (!alreadyRequested) {
+          match.rematchRequests.push(userId);
+          await match.save();
+        }
+
+        const updatedMatch = await gamesService.getMatchById(gameId, true);
+        console.log('SOCKET: game:rematch:request broadcasting updated match state');
+        io.to(`game:${gameId}`).emit('game:state', { match: updatedMatch });
+
+        let startRematch = false;
+        if (hasAI) {
+          startRematch = true;
+        } else {
+          const humanPlayers = match.players.filter(p => {
+            if (!p.userId) return true;
+            if (typeof p.userId === 'object') {
+              return p.userId.username !== 'AlphaSphere AI';
+            }
+            return true;
+          });
+          const humanIds = humanPlayers.map(p => {
+            const val = p.userId && (p.userId._id || p.userId);
+            return val ? val.toString() : '';
+          }).filter(Boolean);
+          const requestIds = (match.rematchRequests || []).map(id => id.toString());
+          startRematch = humanIds.length > 0 && humanIds.every(hId => requestIds.includes(hId));
+        }
+
+        console.log('SOCKET: game:rematch:request status', { startRematch, hasAI });
+
+        if (startRematch) {
+          console.log('SOCKET: game:rematch:request starting new match');
+          const newMatch = await gamesService.startMatch(match.gameType, match.lobbyId);
+          console.log('SOCKET: game:rematch:request new match started', newMatch._id);
+          io.to(`game:${gameId}`).emit('game:rematch:started', { match: newMatch });
+          io.to(`lobby:${match.lobbyId}`).emit('game:started', { match: newMatch });
+        }
+
+        return callback({ status: 'ok', match: updatedMatch });
+      } catch (error) {
+        console.error('Error in game:rematch:request:', error);
+        return callback({ status: 'error', message: error.message });
+      }
+    });
+
     socket.on('disconnect', async () => {
       console.log('Socket disconnected:', socket.id);
       const sockets = io._onlineUsers && io._onlineUsers.get(userId);

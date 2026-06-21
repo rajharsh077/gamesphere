@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { createLobby, getLobby, getPublicLobbies, leaveLobby as apiLeaveLobby, kickPlayer as apiKickPlayer, createQuickAILobby } from '../services/lobbyService';
 import { getLobbyChat } from '../services/chatService';
 import { getGameState } from '../services/gameService';
+import { getUserMatchHistory } from '../services/userService';
 import {
   emitLobbyJoin,
   emitLobbyLeave,
@@ -279,6 +280,172 @@ const QuickAIModal = ({ value, onChange, onCancel, onSubmit }) => {
 };
 
 
+const PlayerProfileModal = ({ player, loading, elos, matches, favoriteGame, onClose }) => {
+  if (!player) return null;
+
+  const initials = player.username?.slice(0, 2).toUpperCase() || 'P';
+  const displayElo = player.gameElo || player.elo || 1200;
+  const displayXp = player.xp || 0;
+
+  const getRankDetails = (eloValue) => {
+    const value = eloValue ?? 1200;
+    if (value >= 1600) return { name: 'Grandmaster', symbol: '👑', color: 'border-amber-500/30 bg-amber-500/10 text-amber-400' };
+    if (value >= 1400) return { name: 'Diamond Tier', symbol: '💎', color: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400' };
+    if (value >= 1200) return { name: 'Challenger', symbol: '⚔️', color: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400' };
+    return { name: 'Rookie', symbol: '🛡️', color: 'border-white/10 bg-white/5 text-slate-400' };
+  };
+
+  const rank = getRankDetails(displayElo);
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-4 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+      <div 
+        className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-slate-950 shadow-[0_30px_90px_rgba(0,0,0,0.85)] backdrop-blur-xl relative overflow-hidden flex flex-col justify-between animate-slide-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Premium top gradient line */}
+        <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-30" />
+
+        {/* Banner Cover Background */}
+        <div className="h-16 w-full bg-gradient-to-r from-indigo-950/40 via-purple-950/40 to-pink-950/40 relative border-b border-white/5 z-10">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-3.5 right-3.5 text-slate-400 hover:text-white transition-colors p-1.5 bg-slate-950/60 hover:bg-slate-900/80 rounded-full border border-white/10 z-30"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Profile Info Container */}
+        <div className="px-6 pb-6 relative z-20 text-left">
+          {/* Avatar and Basic Username info */}
+          <div className="flex items-end gap-3.5 -mt-8 mb-4">
+            <div className="relative shrink-0 z-20">
+              <div className="w-20 h-20 rounded-full p-[2.5px] bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-[0_0_20px_rgba(139,92,246,0.45)]">
+                {player.avatarUrl ? (
+                  <img
+                    src={player.avatarUrl}
+                    alt={player.username}
+                    className="w-full h-full rounded-full border-2 border-slate-950 bg-slate-950 object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-full border-2 border-slate-950 bg-slate-900 flex items-center justify-center font-black text-xl text-cyan-400 uppercase">
+                    {initials}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="min-w-0 pb-1">
+              <h2 className="text-xl font-black text-white tracking-tight leading-none truncate">{player.username}</h2>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider mt-2 ${rank.color}`}>
+                <span className="text-[10px]">{rank.symbol}</span>
+                <span>{rank.name}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Tagline */}
+          {player.tagline ? (
+            <p className="text-[11px] text-indigo-300 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl px-4 py-2.5 font-semibold italic tracking-wide leading-relaxed mt-2">
+              "{player.tagline}"
+            </p>
+          ) : (
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-2 italic px-1">
+              No tagline set
+            </p>
+          )}
+
+          {/* ELO & XP grid */}
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-3 text-center shadow-inner">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Elo Rating</span>
+              <span className="text-base font-black text-white block mt-1 tracking-tight">{displayElo} ELO</span>
+            </div>
+            <div className="bg-slate-900/30 border border-white/5 rounded-2xl p-3 text-center shadow-inner">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Experience</span>
+              <span className="text-base font-black text-indigo-400 block mt-1 tracking-tight">{displayXp} XP</span>
+            </div>
+          </div>
+
+          {/* Game Specific breakdown */}
+          <div className="mt-5 space-y-2">
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block px-1">Game Performance</span>
+            <div className="grid grid-cols-3 gap-2">
+              {/* Chess */}
+              <div className="bg-slate-900/20 border border-white/5 rounded-2xl p-2 text-center min-h-[75px] flex flex-col justify-between shadow-inner">
+                <span className="text-[8px] font-black uppercase tracking-wider text-purple-400 block">Chess</span>
+                <span className="text-sm font-black text-white block mt-0.5">{elos.chess}</span>
+                <span className="text-[7px] text-slate-500 font-bold uppercase">Rating</span>
+              </div>
+              {/* Connect 4 */}
+              <div className="bg-slate-900/20 border border-white/5 rounded-2xl p-2 text-center min-h-[75px] flex flex-col justify-between shadow-inner">
+                <span className="text-[8px] font-black uppercase tracking-wider text-blue-400 block">Connect 4</span>
+                <span className="text-sm font-black text-white block mt-0.5">{elos.connect4}</span>
+                <span className="text-[7px] text-slate-500 font-bold uppercase">Rating</span>
+              </div>
+              {/* Tic Tac Toe */}
+              <div className="bg-slate-900/20 border border-white/5 rounded-2xl p-2 text-center min-h-[75px] flex flex-col justify-between shadow-inner">
+                <span className="text-[8px] font-black uppercase tracking-wider text-pink-400 block">Tic Tac Toe</span>
+                <span className="text-sm font-black text-white block mt-0.5">{elos.ttt}</span>
+                <span className="text-[7px] text-slate-500 font-bold uppercase">Rating</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Form and Favorite Game details */}
+          <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-white/5">
+            {/* Recent Form */}
+            <div className="text-left">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-2 px-1">Recent Form</span>
+              {loading ? (
+                <div className="flex gap-1.5 py-1">
+                  {[...Array(5)].map((_, idx) => (
+                    <div key={idx} className="w-5 h-5 rounded-full bg-slate-900/40 border border-white/5 animate-pulse" />
+                  ))}
+                </div>
+              ) : matches.length === 0 ? (
+                <span className="text-[9px] text-slate-500 font-bold uppercase block py-1 px-1">No logs</span>
+              ) : (
+                <div className="flex gap-1.5 py-0.5">
+                  {matches.map((outcome, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm ${
+                        outcome === 'win' 
+                          ? 'bg-emerald-500/10 border border-emerald-500/40 text-emerald-400' 
+                          : outcome === 'loss' 
+                          ? 'bg-rose-500/10 border border-rose-500/40 text-rose-400' 
+                          : 'bg-slate-500/10 border border-slate-500/40 text-slate-400'
+                      }`}
+                      title={outcome.toUpperCase()}
+                    >
+                      {outcome === 'win' ? 'W' : outcome === 'loss' ? 'L' : 'D'}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Favorite Game */}
+            <div className="text-left">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block mb-2 px-1">Favorite Game</span>
+              {loading ? (
+                <div className="h-4 w-20 bg-slate-900/40 border border-white/5 animate-pulse rounded" />
+              ) : (
+                <span className="text-xs font-black text-indigo-300 px-1 block py-0.5">{favoriteGame}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+
 const CreateLobbyForm = ({ onCreateLobby, onClose }) => {
   const [form, setForm] = useState({
     name: '',
@@ -528,6 +695,94 @@ const LobbyPage = () => {
   const [search, setSearch] = useState('');
   const [onlineCount, setOnlineCount] = useState(1);
   const navigate = useNavigate();
+
+  // Player Preview States
+  const [previewPlayer, setPreviewPlayer] = useState(null);
+  const [previewMatches, setPreviewMatches] = useState([]);
+  const [previewElos, setPreviewElos] = useState({ chess: 1200, connect4: 1200, ttt: 1200 });
+  const [previewFavoriteGame, setPreviewFavoriteGame] = useState('None');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const handlePlayerClick = async (player) => {
+    if (!player) return;
+    setPreviewPlayer(player);
+    setLoadingPreview(true);
+    setPreviewMatches([]);
+    setPreviewElos({ chess: 1200, connect4: 1200, ttt: 1200 });
+    setPreviewFavoriteGame('None');
+
+    try {
+      const data = await getUserMatchHistory(player._id || player.id || player);
+      const rawMatches = data.matches || [];
+
+      let chess = 1200;
+      let connect4 = 1200;
+      let ttt = 1200;
+      const chronological = [...rawMatches].reverse();
+      const pId = (player._id || player.id || player).toString();
+      
+      for (const match of chronological) {
+        const getPlayerId = (playerObj) => {
+          if (!playerObj || !playerObj.userId) return null;
+          return typeof playerObj.userId === 'object'
+            ? playerObj.userId._id || playerObj.userId.id
+            : playerObj.userId;
+        };
+        const p = match.players.find((item) => {
+          const pid = getPlayerId(item);
+          return pid && pid.toString() === pId;
+        });
+        const rawEloChange = p?.eloChange || 0;
+        const gameType = (match.gameType || match.game || '').toLowerCase();
+        
+        if (gameType === 'chess') {
+          chess = Math.max(0, chess + rawEloChange);
+        } else if (gameType === 'connect4') {
+          connect4 = Math.max(0, connect4 + rawEloChange);
+        } else if (gameType === 'tic-tac-toe' || gameType === 'tic-tac-toe strike') {
+          ttt = Math.max(0, ttt + rawEloChange);
+        }
+      }
+      setPreviewElos({ chess, connect4, ttt });
+
+      const formatted = rawMatches.slice(0, 5).map((match) => {
+        const getPlayerId = (playerObj) => {
+          if (!playerObj || !playerObj.userId) return null;
+          return typeof playerObj.userId === 'object'
+            ? playerObj.userId._id || playerObj.userId.id
+            : playerObj.userId;
+        };
+        const p = match.players.find((item) => {
+          const pid = getPlayerId(item);
+          return pid && pid.toString() === pId;
+        });
+        return p?.result || 'draw';
+      });
+      setPreviewMatches(formatted);
+
+      const counts = {};
+      rawMatches.forEach((m) => {
+        const game = (m.gameType || m.game || 'Unknown').toLowerCase();
+        counts[game] = (counts[game] || 0) + 1;
+      });
+      let fav = 'None';
+      let maxCount = 0;
+      for (const [game, count] of Object.entries(counts)) {
+        if (count > maxCount) {
+          maxCount = count;
+          fav = game;
+        }
+      }
+      if (fav.includes('chess')) fav = 'Chess';
+      else if (fav.includes('connect4')) fav = 'Connect 4';
+      else if (fav.includes('tic-tac-toe') || fav.includes('ttt')) fav = 'Tic Tac Toe';
+      setPreviewFavoriteGame(fav === 'None' ? 'None' : fav.charAt(0).toUpperCase() + fav.slice(1));
+    } catch (err) {
+      console.error('Failed to load player history in preview:', err);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
 
   useEffect(() => {
     if (activityFeedRef.current) {
@@ -1691,6 +1946,12 @@ const LobbyPage = () => {
       }
     })();
 
+    const patternClass = isChess 
+      ? 'lobby-bg-pattern-chess' 
+      : isConnect4 
+      ? 'lobby-bg-pattern-connect4' 
+      : 'lobby-bg-pattern-tictactoe';
+
     const readyCount = lobby.players?.filter((p) => {
       const pId = getUserIdString(p);
       const hostId = getUserIdString(lobby.host);
@@ -1795,7 +2056,7 @@ const LobbyPage = () => {
         </div>
 
         {/* Hero Banner Header */}
-        <div className={`relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br ${bannerData.gradient} p-6 sm:p-8 shadow-2xl backdrop-blur-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 w-full group transition-all duration-300 shadow-[0_0_60px_rgba(99,102,241,0.25)] ${theme.borderClass}`}>
+        <div className={`relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br ${bannerData.gradient} ${patternClass} p-6 sm:p-8 shadow-2xl backdrop-blur-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 w-full group transition-all duration-300 shadow-[0_0_60px_rgba(99,102,241,0.25)] ${theme.borderClass}`}>
           <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
             <div className="absolute h-1.5 w-1.5 bg-indigo-400 rounded-full left-[10%] bottom-[10%] animate-particle-1" />
             <div className="absolute h-2 w-2 bg-purple-400 rounded-full left-[30%] bottom-[15%] animate-particle-2" />
@@ -1955,7 +2216,10 @@ const LobbyPage = () => {
                   <div className="space-y-3 mt-6">
                     {/* Host/Spectator Card */}
                     {!isHostPlaying && lobby.host && (
-                      <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_0_12px_rgba(99,102,241,0.1)]">
+                      <div 
+                        onClick={() => handlePlayerClick(lobby.host)}
+                        className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_0_12px_rgba(99,102,241,0.1)] cursor-pointer hover:border-indigo-500/40 transition duration-200"
+                      >
                         <div className="flex items-center gap-3 w-full sm:w-auto">
                           {lobby.host.avatarUrl ? (
                             <Avatar
@@ -2007,7 +2271,11 @@ const LobbyPage = () => {
                         const tier = getPlayerRank(rating);
 
                         return (
-                          <div key={playerId || index} className="rounded-2xl border border-white/5 bg-slate-900/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition duration-300 hover:border-white/10">
+                          <div 
+                            key={playerId || index} 
+                            onClick={() => handlePlayerClick(playerData)}
+                            className="rounded-2xl border border-white/5 bg-slate-900/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition duration-300 hover:border-white/10 cursor-pointer hover:bg-slate-900/35 hover:border-indigo-500/25"
+                          >
                             <div className="flex items-center gap-3 w-full sm:w-auto">
                               {playerData.avatarUrl ? (
                                 <Avatar
@@ -2069,7 +2337,10 @@ const LobbyPage = () => {
                                 {isHost && !isPlayerHost && (
                                   <button
                                     type="button"
-                                    onClick={() => handleKickPlayer(playerId)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleKickPlayer(playerId);
+                                    }}
                                     className="rounded-full border border-rose-500/30 hover:border-rose-500/60 bg-rose-950/20 hover:bg-rose-900/30 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-400 transition flex items-center gap-1 active:scale-[0.95]"
                                     title="Kick from lobby"
                                   >
@@ -2410,6 +2681,17 @@ const LobbyPage = () => {
             </div>
           </div>
         </div>
+
+        {previewPlayer && (
+          <PlayerProfileModal
+            player={previewPlayer}
+            loading={loadingPreview}
+            elos={previewElos}
+            matches={previewMatches}
+            favoriteGame={previewFavoriteGame}
+            onClose={() => setPreviewPlayer(null)}
+          />
+        )}
       </section>
     );
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import GameBoard from '../components/GameBoard';
-import { initSocket, onGameState, offGameState, emitGameMove, emitGameSubscribe, onGameChatMessage, offGameChatMessage, emitGameChat, emitGameForfeit } from '../services/socketService';
+import { initSocket, onGameState, offGameState, emitGameMove, emitGameSubscribe, onGameChatMessage, offGameChatMessage, emitGameChat, emitGameForfeit, onGameRematchStarted, offGameRematchStarted, emitGameRematchRequest } from '../services/socketService';
 import { getGameState as fetchGameState, getGameChat } from '../services/gameService';
 import Avatar from '../components/Avatar';
 import { getLobby, leaveLobby as apiLeaveLobby } from '../services/lobbyService';
@@ -121,6 +121,8 @@ const GamePage = () => {
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
   const isChatOpenRef = useRef(false);
   const [lobby, setLobby] = useState(null);
+  const hasCheckedAchievementsRef = useRef(false);
+  const hasTriggered20MovesRef = useRef(false);
 
   useEffect(() => {
     if (match?.lobbyId) {
@@ -342,6 +344,12 @@ const GamePage = () => {
 
     if (!gameId) return undefined;
 
+    const handleRematchStarted = ({ match: newMatch }) => {
+      if (!active) return;
+      addToast('Rematch accepted! Loading arena...', 'success');
+      navigate(`/game/${newMatch._id}`);
+    };
+
     emitGameSubscribe({ gameId }, (response) => {
       if (response.status === 'ok') {
         handleStateUpdate(response.gameState || response.match);
@@ -352,6 +360,7 @@ const GamePage = () => {
 
     onGameState(handleGameUpdate);
     onGameChatMessage(handleGameChatMessage);
+    onGameRematchStarted(handleRematchStarted);
 
     fetchGameState(gameId)
       .then((data) => {
@@ -368,8 +377,15 @@ const GamePage = () => {
       active = false;
       offGameState(handleGameUpdate);
       offGameChatMessage(handleGameChatMessage);
+      offGameRematchStarted(handleRematchStarted);
     };
   }, [gameId, token, navigate]);
+
+  useEffect(() => {
+    hasCheckedAchievementsRef.current = false;
+    hasTriggered20MovesRef.current = false;
+    notifiedRef.current = false;
+  }, [gameId]);
 
   useEffect(() => {
     if (!gameId || !token) return;
@@ -479,7 +495,30 @@ const GamePage = () => {
     });
   };
 
+  const handleRematchRequest = () => {
+    console.log('GamePage: handleRematchRequest called', { gameId });
+    if (!gameId) return;
+    emitGameRematchRequest({ gameId }, (response) => {
+      console.log('GamePage: handleRematchRequest response received', response);
+      if (response.status === 'ok') {
+        addToast('Rematch request sent!', 'success');
+        if (response.match) {
+          setMatch(response.match);
+        }
+      } else {
+        addToast(response.message || 'Unable to request rematch.', 'error');
+      }
+    });
+  };
+
   const handleExit = async () => {
+    if (match?.lobbyId && lobby?.durationType === 'one-hour') {
+      try {
+        await apiLeaveLobby(match.lobbyId);
+      } catch (err) {
+        console.error('Error leaving lobby on exit:', err);
+      }
+    }
     localStorage.removeItem('activeLobbyId');
     navigate('/lobby');
   };
@@ -583,6 +622,107 @@ const GamePage = () => {
   }, [match, playerSymbol]);
 
   useEffect(() => {
+    if (!match || !user) return;
+
+    const myId = getUserIdString(user);
+
+    // Achievements checking runs once at game completion
+    if (match.status === 'completed' && !hasCheckedAchievementsRef.current && playerSymbol) {
+      hasCheckedAchievementsRef.current = true;
+
+      const mePlayer = match.players.find(p => getUserIdString(p.userId) === myId);
+      if (mePlayer) {
+        const history = mePlayer.userId.matchHistory || [];
+        
+        const isMatchWin = (m, pIdStr) => {
+          if (!m || !m.players) return false;
+          const pe = m.players.find(p => {
+            const uId = p.userId?._id || p.userId || p;
+            return uId.toString() === pIdStr;
+          });
+          return pe && pe.result === 'win';
+        };
+
+        const isMatchLoss = (m, pIdStr) => {
+          if (!m || !m.players) return false;
+          const pe = m.players.find(p => {
+            const uId = p.userId?._id || p.userId || p;
+            return uId.toString() === pIdStr;
+          });
+          return pe && pe.result === 'loss';
+        };
+
+        // 1. Gladiator (10 matches played) & Arena Veteran (25 matches played)
+        if (history.length === 10) {
+          addToast('⚡ Gladiator Unlocked!', 'achievement');
+        }
+        if (history.length === 25) {
+          addToast('🛡️ Arena Veteran Unlocked!', 'achievement');
+        }
+
+        // 2. Challenger ELO (1300 ELO) & Grandmaster ELO (1500 ELO)
+        const oldElo = mePlayer.userId.elo - (mePlayer.eloChange || 0);
+        if (mePlayer.userId.elo >= 1300 && oldElo < 1300) {
+          addToast('⭐ Challenger ELO Unlocked!', 'achievement');
+        }
+        if (mePlayer.userId.elo >= 1500 && oldElo < 1500) {
+          addToast('💎 Grandmaster ELO Unlocked!', 'achievement');
+        }
+
+        // 3. Versatile Gamer (Played Chess, Connect 4, and Tic-Tac-Toe)
+        const hasPlayed = (matchList, type) => matchList.some(m => m.gameType?.toLowerCase().includes(type));
+        const allPlayedNow = hasPlayed(history, 'chess') && hasPlayed(history, 'connect4') && (hasPlayed(history, 'tic-tac-toe') || hasPlayed(history, 'tic-tac-toe strike'));
+        const pastMatches = history.filter(m => m._id?.toString() !== gameId);
+        const allPlayedBefore = hasPlayed(pastMatches, 'chess') && hasPlayed(pastMatches, 'connect4') && (hasPlayed(pastMatches, 'tic-tac-toe') || hasPlayed(pastMatches, 'tic-tac-toe strike'));
+        if (allPlayedNow && !allPlayedBefore) {
+          addToast('🏆 Versatile Gamer Unlocked!', 'achievement');
+        }
+
+        // Win-dependent achievements
+        if (mePlayer.result === 'win') {
+          // 4. Game-specific wins (TTT Tactician: 5 wins, Connect 4 Expert: 5 wins, Chess Contender: 3 wins)
+          const filterWins = (gameTypeKey) => history.filter(m => m.gameType?.toLowerCase().includes(gameTypeKey) && isMatchWin(m, myId)).length;
+          
+          if (match.gameType === 'chess') {
+            const chessWins = filterWins('chess');
+            if (chessWins === 3) {
+              addToast('👑 Chess Contender Unlocked!', 'achievement');
+            }
+          } else if (match.gameType === 'connect4') {
+            const c4Wins = filterWins('connect4');
+            if (c4Wins === 5) {
+              addToast('🎮 Connect 4 Expert Unlocked!', 'achievement');
+            }
+          } else if (match.gameType?.includes('tic-tac-toe')) {
+            const tttWins = history.filter(m => (m.gameType?.toLowerCase().includes('tic-tac-toe') || m.gameType?.toLowerCase().includes('strike')) && isMatchWin(m, myId)).length;
+            if (tttWins === 5) {
+              addToast('🎯 TTT Tactician Unlocked!', 'achievement');
+            }
+          }
+
+          // 5. Streak Specialist (3-game streak) & Unstoppable Force (5-game streak)
+          let streak = 0;
+          for (let i = history.length - 1; i >= 0; i--) {
+            if (isMatchWin(history[i], myId)) {
+              streak++;
+            } else if (isMatchLoss(history[i], myId)) {
+              break;
+            } else {
+              break; // Draw or pending breaks the streak
+            }
+          }
+
+          if (streak === 3) {
+            addToast('🔥 Streak Specialist Unlocked!', 'achievement');
+          } else if (streak === 5) {
+            addToast('⚔️ Unstoppable Force Unlocked!', 'achievement');
+          }
+        }
+      }
+    }
+  }, [match, user, gameId, playerSymbol]);
+
+  useEffect(() => {
     const handleResize = () => {
       if (!boardContainerRef.current || !boardRef.current) return;
       const containerWidth = boardContainerRef.current.clientWidth - 32;
@@ -611,19 +751,24 @@ const GamePage = () => {
         {toasts.map((toast) => {
           let toastBg = 'bg-slate-900/90 border-slate-700/50 text-slate-200';
           let iconColor = 'text-indigo-400';
+          let ToastIcon = AlertCircle;
           if (toast.type === 'success') {
             toastBg = 'bg-emerald-950/90 border-emerald-500/40 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.15)]';
             iconColor = 'text-emerald-400';
           } else if (toast.type === 'error') {
             toastBg = 'bg-rose-950/90 border-rose-500/45 text-rose-100 shadow-[0_0_15px_rgba(244,63,94,0.15)]';
-            iconColor = 'text-rose-405 text-rose-400';
+            iconColor = 'text-rose-400';
+          } else if (toast.type === 'achievement') {
+            toastBg = 'bg-amber-950/95 border-amber-500/40 text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.25)]';
+            iconColor = 'text-amber-400';
+            ToastIcon = Trophy;
           }
           return (
             <div
               key={toast.id}
               className={`flex items-center gap-3 px-5 py-3 rounded-2xl border backdrop-blur-md transition-all duration-300 transform translate-y-0 animate-slide-up pointer-events-auto ${toastBg}`}
             >
-              <AlertCircle className={`h-4.5 w-4.5 shrink-0 ${iconColor}`} />
+              <ToastIcon className={`h-4.5 w-4.5 shrink-0 ${iconColor}`} />
               <span className="text-xs font-black tracking-wide uppercase">{toast.message}</span>
             </div>
           );
@@ -950,6 +1095,55 @@ const GamePage = () => {
                   <div className="mt-0.5 text-[10px] font-black uppercase tracking-wider bg-white/5 border border-white/5 px-6 py-1.5 rounded-full text-slate-400 relative z-10">
                     {isDraw ? 'Standoff' : `Winner: ${isWin ? 'You' : 'Opponent'} (${match.winner.symbol || match.winner})`}
                   </div>
+
+                  {(() => {
+                    const isAIGame = match.players.some(p => p.userId && p.userId.username === 'AlphaSphere AI');
+                    const canRematch = (lobby?.durationType !== 'one-time') || isAIGame;
+                    if (!canRematch || !playerSymbol) return null;
+
+                    const myId = getUserIdString(user);
+                    const myRematchRequested = match.rematchRequests?.some(id => getUserIdString(id) === myId);
+                    const opponentRematchRequested = match.rematchRequests?.some(id => getUserIdString(id) !== myId);
+                    const opponent = match.players.find(p => getUserIdString(p.userId) !== myId);
+                    const oppName = opponent?.userId?.username || opponent?.username || 'Opponent';
+
+                    return (
+                      <div className="mt-2.5 relative z-10 w-full max-w-[280px]">
+                        {myRematchRequested ? (
+                          <div className="w-full rounded-2xl border border-white/5 bg-slate-900/60 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center justify-center gap-1.5 animate-pulse">
+                            <span>🔄 Waiting for Opponent...</span>
+                          </div>
+                        ) : opponentRematchRequested ? (
+                          <div className="flex flex-col items-center gap-2 w-full">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-pink-400 animate-pulse">
+                              🔥 {oppName} wants a rematch!
+                            </span>
+                            <div className="flex gap-2 w-full">
+                              <button
+                                onClick={handleRematchRequest}
+                                className="flex-grow rounded-2xl bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-400 hover:to-indigo-400 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-lg transition duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 animate-bounce"
+                              >
+                                <span>Accept</span>
+                              </button>
+                              <button
+                                onClick={handleExit}
+                                className="flex-grow rounded-2xl border border-white/10 bg-slate-900/85 hover:bg-slate-800 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-350 hover:text-white transition duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                              >
+                                <span>Leave</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={handleRematchRequest}
+                            className="w-full rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-white shadow-lg transition duration-300 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <span>🔄 Play Again</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}

@@ -163,10 +163,9 @@ const makeMatchMove = async (gameId, playerId, move) => {
         if (lobby.durationType === 'one-time') {
           lobby.status = 'completed';
         } else if (lobby.durationType === 'one-hour') {
-          // For one-hour lobbies, reset players so it shows 0/2 and allow rejoining until expiresAt
+          // For one-hour lobbies, keep players so they can rematch, but reset ready status
           lobby.status = 'waiting';
-          lobby.players = [];
-          lobby.invitedUsers = [];
+          lobby.readyPlayers = [];
           // ensure expiresAt exists for one-hour lobbies (safety)
           if (!lobby.expiresAt) {
             lobby.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -260,8 +259,7 @@ const forfeitMatch = async (gameId, forfeitingUserId) => {
         lobby.status = 'completed';
       } else if (lobby.durationType === 'one-hour') {
         lobby.status = 'waiting';
-        lobby.players = [];
-        lobby.invitedUsers = [];
+        lobby.readyPlayers = [];
         if (!lobby.expiresAt) {
           lobby.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
         }
@@ -344,8 +342,7 @@ const drawMatch = async (gameId, userId) => {
         lobby.status = 'completed';
       } else if (lobby.durationType === 'one-hour') {
         lobby.status = 'waiting';
-        lobby.players = [];
-        lobby.invitedUsers = [];
+        lobby.readyPlayers = [];
         if (!lobby.expiresAt) {
           lobby.expiresAt = new Date(Date.now() + 60 * 60 * 1000);
         }

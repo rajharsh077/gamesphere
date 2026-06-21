@@ -19,7 +19,8 @@ const matchSchema = new mongoose.Schema(
     status: { type: String, enum: ['pending', 'active', 'completed'], default: 'pending' },
     durationSeconds: { type: Number, default: 0 },
     completedAt: { type: Date, default: null },
-    lobbyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lobby' }
+    lobbyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lobby' },
+    rematchRequests: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] }
   },
   {
     timestamps: true

@@ -204,3 +204,19 @@ export const emitGameDraw = (payload, callback) => {
   if (!socket) return;
   socket.emit('game:draw', payload, callback);
 };
+
+export const onGameRematchStarted = (callback) => {
+  if (!socket) return;
+  socket.on('game:rematch:started', callback);
+};
+
+export const offGameRematchStarted = (callback) => {
+  if (!socket) return;
+  socket.off('game:rematch:started', callback);
+};
+
+export const emitGameRematchRequest = (payload, callback) => {
+  console.log('CLIENT SOCKET: emitGameRematchRequest called', { payload, socketExists: !!socket, connected: socket?.connected });
+  if (!socket) return;
+  socket.emit('game:rematch:request', payload, callback);
+};
