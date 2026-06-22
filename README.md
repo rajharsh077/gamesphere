@@ -1,42 +1,76 @@
 # 🎮 GameSphere
 
-GameSphere is a premium, real-time multiplayer gaming platform featuring classic strategic games such as **Chess**, **Connect 4**, and **Tic-Tac-Toe**. Built with a state-of-the-art tech stack, it provides seamless matchmaking lobbies, real-time player presence tracking, ELO ratings, profile card previews, direct messages, and an interactive achievements/rematch system.
+GameSphere is a premium, real-time multiplayer gaming platform featuring classic strategic board games: **Chess**, **Connect 4**, and **Tic-Tac-Toe**. Built with a state-of-the-art web stack, it offers seamless matchmaking lobbies, real-time player presence tracking, Elo ratings, interactive profiles, custom achievements, direct messaging, and an advanced rematch system.
 
 ---
 
 ## ✨ Key Features
 
 ### ⚔️ Game Arenas
-*   **Chess**: Fully implemented chess engine validation with complete movement rules (capture, castling, en passant) and interactive board states.
-*   **Connect 4**: Smooth column-dropping grid pattern logic, with automatic vertical, horizontal, and diagonal win detection.
-*   **Tic-Tac-Toe**: Neon-styled quick-match classic.
-*   **AlphaSphere AI**: Intelligent opponent engine supporting local training matches across all game types.
+*   **Chess**: Fully implemented server-side chess engine validation supporting all legal moves (pieces movement, captures, castling, and en passant), drag-and-drop or click-to-move interactions, real-time state synchronization, move history tracking, captured pieces, and check/checkmate alerts.
+*   **Connect 4**: Neon-styled grid design featuring smooth column hover indicators, drop animations, and immediate vertical, horizontal, and diagonal win detection.
+*   **Tic-Tac-Toe**: Classic quick-match arena with custom neon animations and quick response cells.
+*   **Spectator Mode**: Watch live matches in real-time. Spectators can join active lobby slots and view the board state updates live.
+*   **Forfeit & Draw Resolutions**: Players can surrender matches instantly (forfeiting grants a win to the opponent and resolves ELO/XP changes) or request/trigger draws.
 
 ### 👥 Lobby & Matchmaking System
-*   **Dynamic Custom Banners**: Monochrome, game-themed background watermarks that dynamically adapt based on Chess, Connect 4, or Tic-Tac-Toe configurations.
-*   **Lobby Durations**: Support for `one-time` quick match lobbies and persistent `one-hour` lobbies.
-*   **Player Profile Previews**: Click on any player in the lobby to inspect their mini-card (ELO, XP, Rank Tier, recent W/L form bubbles, and favorite game charts).
-*   **Rematch System ("Play Again")**: Non-one-time lobbies and AI matches support an instant rematch request. The requesting player sees a `Waiting for Opponent...` pulse, while the opponent receives a glowing, bouncing `Opponent wants a rematch!` prompt with side-by-side **Accept** and **Leave** buttons.
+*   **Quick Match vs AI**: Instantly bypass waiting/ready check queues by choosing Chess, Connect 4, or Tic-Tac-Toe and spawning a private match lobby directly against **AlphaSphere AI**.
+*   **Lobby Format Options**:
+    *   `one-time` Lobbies: Designed for single-match showdowns, deleting themselves automatically upon match completion.
+    *   `one-hour` Lobbies: Persistent game rooms that remain active for consecutive rematch sessions until the timer expires.
+*   **Private & Public Lobbies**: Public lobbies are visible to everyone. Private lobbies are secure and protected with bcrypt-hashed passwords. Use the filter bar to search by game type or privacy status.
+*   **Host Management Tools**:
+    *   **Spectator/Player Toggle**: Hosts can switch between active playing or spectating to manage matches.
+    *   **Kick Players**: Eject unwanted users from the lobby in real-time (triggers a Socket.IO event to dismiss the user).
+    *   **Recruit Allies (Lobby Invites)**: Search and invite online friends directly from the lobby room. Hosts/players receive floating invitation banners to accept/dismiss requests.
+*   **Lobby Highlights & Insight Cards**:
+    *   *Strategy Tip*: Dynamic advice based on the chosen game.
+    *   *Lobby Mood*: Tracks competitive telemetry status.
+    *   *Lobby Format*: Shows duration format.
+    *   *Privacy State*: Displays lock/unlock indicators.
+*   **Squad Chat & Activity Log**:
+    *   A live, scrollable console log logging all room socket activity (joining, ready status toggles, etc.).
+    *   Lobby-wide text chat with unread message badges.
+    *   **Quick Reactions Bar**: Send floating emojis (`🔥`, `⚔️`, `👑`, `🎯`, `😂`) overlays.
 
-### 🏆 Profiles & Achievements
-*   **Progression Trackers**: Real-time ELO rating and Experience Points (XP) level updates upon match outcomes.
-*   **Dynamic Divisions**: Auto-ranks players into divisions: `Rookie` 🛡️, `Challenger` ⚔️, `Diamond Tier` 💎, and `Grandmaster` 👑.
-*   **Achievement Toasts**: Custom-styled gold ambient-glowing toasts featuring the Lucide Trophy icon trigger in real-time when profile achievements are unlocked:
+### 🧠 AlphaSphere AI Engine
+AlphaSphere AI plays with a realistic **600ms latency delay** to simulate human reaction times. It features tailored algorithmic solvers per game type:
+*   **Tic-Tac-Toe Engine**: Plays defensively and opportunistically. Checks for immediate wins; blocks opponent win lines; grabs the center square if open; attempts corner captures; and falls back to random cell moves.
+*   **Connect 4 Engine**: Identifies columns that lead to instant wins; blocks opponent lines of 3; favors the strategic center column (column 3) 60% of the time; and drops tokens randomly in valid columns otherwise.
+*   **Chess Engine**: Scans the board for all valid chess moves and aggressively prioritizes capture moves (80% capture weight preference) to simulate competitive chess play.
+
+### 🏆 Profiles & Progression Trackers
+*   **Elo Skill Rating**: Auto-calculated upon game completion using custom K-Factors based on game complexity:
+    *   **Chess**: K-Factor of `32` (High Strategy)
+    *   **Connect 4**: K-Factor of `20` (Medium Strategy)
+    *   **Tic-Tac-Toe**: K-Factor of `12` (Quick Play)
+*   **XP Rewards**: Earn Flat Experience Points (XP) per match outcome:
+    *   `Win`: 50 XP
+    *   `Draw`: 20 XP
+    *   `Loss`: 10 XP
+*   **Dynamic Divisions**: Automatically assigns players to division tiers based on their ELO rating:
+    *   🛡️ **Rookie Division** (Below 1200 ELO)
+    *   ⚔️ **Challenger Division** (1200+ ELO)
+    *   💎 **Diamond Tier** (1300+ ELO)
+    *   👑 **Grandmaster Tier** (1500+ ELO)
+*   **Achievement Badges**: Custom glowing trophy toasts trigger in real-time when achieving milestones:
     *   🎯 **TTT Tactician**: Win 5 Tic-Tac-Toe matches.
     *   🎮 **Connect 4 Expert**: Win 5 Connect 4 matches.
     *   👑 **Chess Contender**: Win 3 Chess matches.
-    *   🔥 **Streak Specialist**: 3-game win streak.
-    *   ⚔️ **Unstoppable Force**: 5-game win streak.
-    *   🏆 **Versatile Gamer**: Play competitive matches across all 3 games.
+    *   🔥 **Streak Specialist**: Maintain a 3-game win streak.
+    *   ⚔️ **Unstoppable Force**: Maintain a 5-game win streak.
+    *   🏆 **Versatile Gamer**: Play competitive matches across all 3 game types.
     *   ⚡ **Gladiator**: Play 10 competitive matches.
     *   🛡️ **Arena Veteran**: Play 25 competitive matches.
     *   ⭐ **Challenger ELO**: Reach 1300 ELO skill rating.
     *   💎 **Grandmaster ELO**: Reach 1500 ELO skill rating.
 
-### 💬 Social & Presence Telemetry
-*   **Friendships**: Real-time presence indicators tracking online, offline, and in-lobby telemetry status for friends.
-*   **Global Standings**: Visual percentile ranks and matchmaking form trackers.
-*   **Chat Channels**: Real-time Socket.IO chat rooms for Lobbies, Live Match Arenas (with quick reaction emojis), and private Direct Messages.
+### 💬 Social & Telemetry System
+*   **Presence Indicators**: Tracks whether friends are online, offline, in-lobby, or spectating in real-time. Updates the friend's last active time when disconnecting.
+*   **Friendship Requests**: Search users by username, send friend requests, accept/decline incoming invitations, and remove existing friends.
+*   **Global Standings**: Comprehensive leaderboard sorted by ELO ratings to view the top players in the community.
+*   **Direct Messaging (DMs)**: Private, real-time chat with friends, including message search filters.
+*   **Dashboard Profiles**: Customize avatars (DiceBear collections), update usernames, and view detailed match history logs showing opponent name, date, outcome, game type, and ELO details.
 
 ---
 
@@ -45,7 +79,7 @@ GameSphere is a premium, real-time multiplayer gaming platform featuring classic
 ### Frontend
 *   **Core**: React (Vite)
 *   **State Management**: Redux Toolkit (auth & local states)
-*   **Styling**: Modern CSS / TailwindCSS (subtle ambient glows, glassmorphism, responsive flex layouts)
+*   **Styling**: Vanilla CSS / TailwindCSS (subtle ambient glows, glassmorphism, responsive flex layouts)
 *   **Icons**: Lucide React
 *   **Client Connection**: Socket.IO Client
 
